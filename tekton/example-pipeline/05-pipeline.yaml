@@ -1,0 +1,39 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: sanity-checks
+spec:
+  workspaces:
+    - name: sanity-ws
+  tasks:
+    - name: skopeo-inspect
+      params:
+        - name: sourceImage
+          value: quay.io/kpavic/test-image:hco
+      taskRef:
+        name: skopeo-inspect-image
+      workspaces:
+        - name: skopeo-ws
+          workspace: sanity-ws
+    - name: label-image-check
+      params:
+        - name: taskImage
+          value: quay.io/redhat-appstudio/hacbs-test:stable
+      taskRef:
+        name: conftest-sanity
+      runAfter:
+        - skopeo-inspect
+      workspaces:
+        - name: conftest-ws
+          workspace: sanity-ws
+    - name: deprecated-image-check
+      params:
+        - name: inspect-path
+          value: $(workspaces.conftest-ws.path)/image_inspect.json
+      taskRef:
+        name: deprecated-image-check
+      runAfter:
+        - skopeo-inspect
+      workspaces:
+        - name: conftest-ws
+          workspace: sanity-ws

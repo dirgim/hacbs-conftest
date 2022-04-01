@@ -1,0 +1,34 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: conftest-sanity
+spec:
+  params:
+    - name: taskImage
+      description: the fully qualified image name
+      default: quay.io/redhat-appstudio/hacbs-test:stable
+      type: string
+  steps:
+    - name: basic-sanity-checks-required-labels
+      image: $(inputs.params.taskImage)
+      script: |
+        #!/usr/bin/env bash
+        conftest test "$(workspaces.conftest-ws.path)/image_inspect.json" --policy "/project/image/policy/required-labels.rego" --output=json
+        if [ $? != 0 ];
+        then
+          echo "REQUIRED-LABELS FAILED!"
+          exit 0
+        fi
+    - name: basic-sanity-checks-deprecated-labels
+      image: quay.io/redhat-appstudio/hacbs-test:stable
+      script: |
+        #/usr/bin/env bash
+        conftest test "$(workspaces.conftest-ws.path)/image_inspect.json" --policy "/project/image/policy/deprecated-labels.rego" --output=json
+        if [ $? != 0 ];
+        then
+          echo "DEPRECATED-LABELS FAILED!"
+          exit 0
+        fi
+  workspaces:
+    - name: conftest-ws 

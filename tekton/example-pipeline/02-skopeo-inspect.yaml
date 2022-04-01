@@ -1,0 +1,23 @@
+---
+ apiVersion: tekton.dev/v1beta1
+ kind: Task
+ metadata:
+   name: skopeo-inspect-image
+ spec:
+   params:
+     - name: sourceImage
+       description: the fully qualified image name
+       default: quay.io/cvpops/test-index:v4.10
+       type: string
+   results:
+     - name: parent-image-ref
+       description: The parent image pull spec
+   steps:
+     - name: inspect-image
+       image: quay.io/redhat-appstudio/hacbs-test:latest
+       script: "skopeo inspect --no-tags docker://$(inputs.params.sourceImage) > $(workspaces.skopeo-ws.path)/image_inspect.json"
+     - name: inspect-image-config
+       image: quay.io/redhat-appstudio/hacbs-test:latest
+       script: "skopeo inspect --no-tags --raw docker://$(inputs.params.sourceImage) > $(workspaces.skopeo-ws.path)/image_config.json"
+   workspaces:
+     - name: skopeo-ws

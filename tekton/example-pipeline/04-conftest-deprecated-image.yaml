@@ -1,0 +1,73 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: deprecated-image-check
+spec:
+  params:
+    - name: registry
+      description: "Image registry for the tested image"
+      default: registry.access.redhat.com
+    - name: inspect-path
+      description: "Image inspection data path"
+      default: $(workspaces.conftest-ws.path)/image_inspect.json
+    - name: policy-dir
+      description: "Path to the directory containing conftest policies"
+      default: "/project/image/policy/deprecated-image.rego"
+
+  results:
+    - name: pyxis-http-code
+      description: HTTP code returned by Pyxis API endpoint
+    - name: image-name
+      description: Value from the image's `name` label
+
+  steps:
+    # Download Pyxis metadata about the image
+    #
+    # project
+    # └── policy
+    # data
+    # └── image_data.json
+    - name: parse-image-name
+      image: quay.io/redhat-appstudio/hacbs-test:stable
+      script: |
+        #!/usr/bin/env bash
+        IMAGE_NAME=$(jq -r ".Labels.name" $(inputs.params.inspect-path))
+        echo -n $IMAGE_NAME > $(results.image-name.path)
+    - name: query-pyxis
+      image: registry.access.redhat.com/ubi8/ubi
+      script: |
+        #!/usr/bin/env bash
+        IMAGE_NAME=$(cat $(results.image-name.path))
+        echo "Querying Pyxis for ${IMAGE_NAME}..."
+        http_code=$(curl -s -o $(workspaces.conftest-ws.path)/image_data.json -w '%{http_code}' "https://catalog.redhat.com/api/containers/v1/repositories/registry/$(inputs.params.registry)/repository/${IMAGE_NAME}")
+        echo "Response code: $http_code"
+        echo -n $http_code > $(results.pyxis-http-code.path)
+    # Run the tests and save output
+    #
+    # project
+    # └── policy
+    # data
+    # ├── image_data.json
+    # └── test_result.json
+    - name: run-conftest
+      image: quay.io/redhat-appstudio/hacbs-test
+      script: |
+        #!/usr/bin/env sh
+        http_code=$(cat $(results.pyxis-http-code.path))
+        if [ "$http_code" == "200" ];
+        then
+          echo "Running conftest..."
+          conftest test $(workspaces.conftest-ws.path)/image_data.json -p $(inputs.params.policy-dir) -o json > $(workspaces.conftest-ws.path)/test_result.json && echo "All tests successful" || echo "Some tests failed"
+          cat $(workspaces.conftest-ws.path)/test_result.json
+          echo "Done!"
+          exit 0
+        elif [ "$http_code" == "404" ];
+        then
+          echo "Image not found in Pyxis"
+          :
+        else
+          echo "Unexpected error (HTTP code $http_code) occured during running conftest"
+          exit 1
+        fi
+  workspaces:
+    - name: conftest-ws
