@@ -1,0 +1,36 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: clair-gosec
+spec:
+  workspaces:
+    - name: workspace
+  tasks:
+    - name: gosec-check
+      taskRef:
+        name: gosec-check
+      params:
+        - name: SOURCE_REPO
+          value: https://github.com/redhat-appstudio/application-service
+      workspaces:
+        - name: workspace
+          workspace: workspace
+    - name: get-clair-results
+      taskRef:
+        name: get-clair-scan
+      params:
+        - name: SHA
+          value: sha256:9cabfed1d1feba5f89c580bf05e8f945f0163ef85148a7db06a01284893abea6
+        - name: PULLSPEC
+          value: quay.io/redhat-appstudio/hacbs-test:stable
+      workspaces:
+        - name: workspace
+          workspace: workspace
+    - name: conftest-clair
+      runAfter:
+        - get-clair-results
+      taskRef:
+        name: conftest-clair
+      workspaces:
+        - name: workspace
+          workspace: workspace
